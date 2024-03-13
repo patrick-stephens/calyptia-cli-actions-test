@@ -1,0 +1,7 @@
+pipeline:
+  inputs:
+    - name: dummy
+      tag: dummy.log
+  outputs:
+    - name: stdout
+      match: "*"

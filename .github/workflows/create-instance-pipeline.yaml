@@ -1,0 +1,66 @@
+name: Devo - export images to customer accessible registry
+on:
+  workflow_dispatch:
+    inputs:
+        instance-name:
+            description: The instance name to use/create.
+            required: true
+            type: string
+        create-instance:
+            description: Create the named instance, or just use an existing named one.
+            required: false
+            type: boolean
+            default: true
+        pipeline-name:
+            description: The pipeline name to create.
+            required: true
+            type: string
+        pipeline-config-filename:
+            description: The name of the config file from the root of this repo.
+            required: false
+            type: string
+            default: 'fluent-bit.yaml'
+        create-cluster:
+            description: Create a local KIND cluster, otherwise use the KUBECONFIG secret
+            required: false
+            type: boolean
+            default: true
+jobs:
+    create-pipeline:
+        name: Create ${{ inputs.pipeline-name }} pipeline for instance ${{ inputs.instance-name }}
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+        steps:
+          - name: Checkout repo for config files
+            uses: actions/checkout@v4
+
+          - name: Create K8S cluster
+            if: inputs.create-cluster
+            uses: helm/kind-action@v1.9.0
+
+          - name: Set up kubeconfig
+            if: ${{ !inputs.create-cluster }}
+            run: |
+              echo '${{ secrets.KUBECONFIG }}' > ./kubeconfig
+              echo "KUBECONFIG=$PWD/kubeconfig" >> $GITHUB_ENVS
+            shell: bash
+
+          - name: Install CLI
+            run: curl -sSfl https://raw.githubusercontent.com/calyptia/cli/main/install.sh | bash
+            shell: bash
+
+          - name: Check version and set up token from CALYPTIA_TOKEN repo secret
+            run: |
+              calyptia version
+              calyptia config set_token '${{ secrets.CALYPTIA_TOKEN }}'
+            shell: bash
+
+          - name: Create instance
+            if: inputs.create-instance
+            run: calyptia create core_instance operator --wait --name '${{ inputs.instance-name }}' --enable-cluster-logging
+            shell: bash
+
+          - name: Create pipeline
+            run: calyptia create pipeline --config-file '${{ inputs.pipeline-config-filename }}' --core-instance '${{ inputs.instance-name }}' --name '${{ inputs.pipeline-name }}'
+            shell: bash
